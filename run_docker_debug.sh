@@ -34,6 +34,7 @@ echo ""
 docker run -it --rm --privileged \
   --env=LOCAL_USER_ID="$(id -u)" \
   -v "${PX4_DIR}":/src/PX4-Autopilot/:rw \
+  -v "${SCRIPT_DIR}/Tools/debug/sitl_gdbserver.sh":/px4-debug-entrypoint.sh:ro \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   -w /src/PX4-Autopilot \
   -e DISPLAY=:0 \
@@ -45,4 +46,4 @@ docker run -it --rm --privileged \
   --network host \
   --name=px4-gz-debug \
   px4-sim-gz \
-  bash /src/PX4-Autopilot/Tools/debug/sitl_gdbserver.sh
+  bash /px4-debug-entrypoint.sh
