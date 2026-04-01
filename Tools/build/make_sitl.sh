@@ -2,13 +2,16 @@
 # Build px4_sitl_default inside Docker, translating container paths to host paths.
 # Output is plain GCC-style so Neovim's quickfix can parse it directly.
 #
-# Usage: ./Tools/build/make_sitl.sh [make_target]
-#   Default target: px4_sitl_default
+# Usage:
+#   ./Tools/build/make_sitl.sh [px4_root] [make_target]
+#
+# px4_root defaults to $PWD (run from the PX4-Autopilot root).
+# Accepting it as an explicit argument makes this script safe to call through symlinks.
 
 set -euo pipefail
 
-HOST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TARGET="${1:-px4_sitl_default}"
+HOST_DIR="${1:-$(pwd)}"
+TARGET="${2:-px4_sitl_default}"
 
 docker run --rm \
   --env=LOCAL_USER_ID="$(id -u)" \

@@ -22,10 +22,8 @@ FILES=(
   run_docker_debug.sh
   start.sh
   .clangd
-  DEBUG.md
   Tools/build/make_sitl.sh
   Tools/debug/sitl_gdbserver.sh
-  Tools/debug/dap-px4.lua
 )
 
 for f in "${FILES[@]}"; do
@@ -35,12 +33,5 @@ for f in "${FILES[@]}"; do
     echo "  removed ${f}"
   fi
 done
-
-# Remove Neovim plugin symlink
-NVIM_LINK="${HOME}/.config/nvim/lua/plugins/dap-px4.lua"
-if [ -L "${NVIM_LINK}" ]; then
-  rm "${NVIM_LINK}"
-  echo "  removed ${NVIM_LINK}"
-fi
 
 echo "Done."
