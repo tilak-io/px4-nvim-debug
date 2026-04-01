@@ -1,17 +1,36 @@
 -- PX4 SITL: debug configurations + async build with quickfix integration
 --
--- Keybindings added:
---   <leader>B   async build px4_sitl_default  (result → quickfix)
+-- All paths are resolved at runtime from the git root of the current buffer,
+-- so this works across multiple PX4-Autopilot clones without any changes.
 --
--- DAP (debug):
---   <leader>dc  start / continue  (shows config picker when idle)
+-- Keybindings:
+--   <leader>B   async build px4_sitl_default  (errors → quickfix)
+--   <leader>dc  start / continue DAP session  (shows config picker when idle)
 --
--- Requires: :MasonInstall cpptools
+-- Requires: :MasonInstall clangd cpptools
 
-local px4_dir = vim.fn.expand("~/Documents/PX4-Autopilot")
-local build_dir = px4_dir .. "/build/px4_sitl_default"
-local romfs_dir = px4_dir .. "/ROMFS/px4fmu_common"
-local build_script = px4_dir .. "/Tools/build/make_sitl.sh"
+-- ── Project root detection ────────────────────────────────────────────────────
+
+--- Return the PX4-Autopilot root for the current buffer, or nil + message.
+local function px4_root()
+  local bufpath = vim.fn.expand("%:p:h")
+  if bufpath == "" then bufpath = vim.fn.getcwd() end
+
+  local root = vim.fn.systemlist(
+    "git -C " .. vim.fn.shellescape(bufpath) .. " rev-parse --show-toplevel"
+  )[1]
+
+  if vim.v.shell_error ~= 0 or not root or root == "" then
+    return nil, "not inside a git repo"
+  end
+
+  -- Confirm this is a PX4-Autopilot repo
+  if vim.fn.isdirectory(root .. "/src/modules") == 0 then
+    return nil, "git root does not look like PX4-Autopilot (" .. root .. ")"
+  end
+
+  return root, nil
+end
 
 -- ── GDB setup commands (mirrors VS Code launch.json) ──────────────────────────
 
@@ -20,6 +39,21 @@ local gdb_setup = {
   { text = "handle SIGCONT nostop noprint nopass", ignoreFailures = true },
 }
 
+-- ── DAP config helpers ────────────────────────────────────────────────────────
+
+--- Wrap a path-producing function so DAP shows a clear error when not in PX4.
+local function px4_path(fn)
+  return function()
+    local root, err = px4_root()
+    if not root then
+      error("PX4 root not found: " .. err)
+    end
+    return fn(root)
+  end
+end
+
+local function build_dir(root) return root .. "/build/px4_sitl_default" end
+
 -- ── DAP configurations ────────────────────────────────────────────────────────
 
 local px4_configs = {
@@ -27,9 +61,9 @@ local px4_configs = {
     name = "PX4 SITL (gz_x500)",
     type = "cppdbg",
     request = "launch",
-    program = build_dir .. "/bin/px4",
-    args = { romfs_dir },
-    cwd = build_dir .. "/rootfs",
+    program  = px4_path(function(r) return build_dir(r) .. "/bin/px4" end),
+    args     = px4_path(function(r) return { r .. "/ROMFS/px4fmu_common" } end),
+    cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
     stopAtEntry = false,
     environment = { { name = "PX4_SIM_MODEL", value = "gz_x500" } },
     MIMode = "gdb",
@@ -39,9 +73,9 @@ local px4_configs = {
     name = "PX4 SITL (gz - pick model)",
     type = "cppdbg",
     request = "launch",
-    program = build_dir .. "/bin/px4",
-    args = { romfs_dir },
-    cwd = build_dir .. "/rootfs",
+    program  = px4_path(function(r) return build_dir(r) .. "/bin/px4" end),
+    args     = px4_path(function(r) return { r .. "/ROMFS/px4fmu_common" } end),
+    cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
     stopAtEntry = false,
     environment = function()
       local model = vim.fn.input("GZ model [x500]: ")
@@ -55,9 +89,9 @@ local px4_configs = {
     name = "PX4 SITL (sihsim SYS_AUTOSTART=10040)",
     type = "cppdbg",
     request = "launch",
-    program = build_dir .. "/bin/px4",
-    args = { romfs_dir },
-    cwd = build_dir .. "/rootfs",
+    program  = px4_path(function(r) return build_dir(r) .. "/bin/px4" end),
+    args     = px4_path(function(r) return { r .. "/ROMFS/px4fmu_common" } end),
+    cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
     stopAtEntry = false,
     environment = { { name = "PX4_SYS_AUTOSTART", value = "10040" } },
     MIMode = "gdb",
@@ -70,9 +104,9 @@ local px4_configs = {
     MIMode = "gdb",
     miDebuggerPath = "/usr/bin/gdb",
     miDebuggerServerAddress = "localhost:1234",
-    program = build_dir .. "/bin/px4",
-    args = {},
-    cwd = build_dir .. "/rootfs",
+    program  = px4_path(function(r) return build_dir(r) .. "/bin/px4" end),
+    args     = {},
+    cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
     stopAtEntry = false,
     setupCommands = gdb_setup,
   },
@@ -80,7 +114,7 @@ local px4_configs = {
 
 -- ── Async build ───────────────────────────────────────────────────────────────
 
-local build_job = nil  -- track running job so we can cancel
+local build_job = nil
 
 local function px4_build()
   if build_job and vim.fn.jobwait({ build_job }, 0)[1] == -1 then
@@ -88,12 +122,26 @@ local function px4_build()
     return
   end
 
+  local root, err = px4_root()
+  if not root then
+    vim.notify("Cannot build: " .. err, vim.log.levels.ERROR, { title = "PX4" })
+    return
+  end
+
+  local script = root .. "/Tools/build/make_sitl.sh"
+  if vim.fn.filereadable(script) == 0 then
+    vim.notify(
+      "Build script not found: " .. script .. "\nRun install.sh from px4-nvim-debug first.",
+      vim.log.levels.ERROR, { title = "PX4" }
+    )
+    return
+  end
+
   local lines = {}
-  vim.notify("Building px4_sitl_default…", vim.log.levels.INFO, { title = "PX4" })
-  -- Clear quickfix ready for new results
+  vim.notify("Building px4_sitl_default in " .. root, vim.log.levels.INFO, { title = "PX4" })
   vim.fn.setqflist({}, "r", { title = "PX4 Build", items = {} })
 
-  build_job = vim.fn.jobstart(build_script, {
+  build_job = vim.fn.jobstart(script, {
     stdout_buffered = false,
     stderr_buffered = false,
     on_stdout = function(_, data)
@@ -108,7 +156,6 @@ local function px4_build()
     end,
     on_exit = function(_, code)
       vim.schedule(function()
-        -- Parse GCC/Clang   file:line:col: error/warning: message
         local items = {}
         for _, line in ipairs(lines) do
           local file, lnum, col, kind, msg =
@@ -136,12 +183,9 @@ local function px4_build()
           local nwrn = #vim.tbl_filter(function(i) return i.type == "W" end, items)
           vim.notify(
             string.format("Build FAILED — %d error(s), %d warning(s)", nerr, nwrn),
-            vim.log.levels.ERROR,
-            { title = "PX4" }
+            vim.log.levels.ERROR, { title = "PX4" }
           )
-          if #items > 0 then
-            vim.cmd("copen")
-          end
+          if #items > 0 then vim.cmd("copen") end
         end
       end)
     end,
@@ -150,8 +194,7 @@ local function px4_build()
   if build_job <= 0 then
     vim.notify(
       "Failed to start build — is Docker running and px4-sim-gz image built?",
-      vim.log.levels.ERROR,
-      { title = "PX4" }
+      vim.log.levels.ERROR, { title = "PX4" }
     )
   end
 end
@@ -161,7 +204,7 @@ end
 return {
   -- clangd LSP (reads .clangd + build/px4_sitl_default/compile_commands.json)
   {
-    "williamboman/mason.nvim",
+    "masson-org/mason.nvim",
     optional = true,
     opts = function(_, opts)
       opts.ensure_installed = opts.ensure_installed or {}
@@ -208,7 +251,6 @@ return {
         end,
       })
 
-      -- Build keybinding (global — works from any buffer)
       vim.keymap.set("n", "<leader>B", px4_build, {
         desc = "PX4: build px4_sitl_default",
         silent = true,
