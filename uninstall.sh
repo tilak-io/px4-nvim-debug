@@ -14,14 +14,21 @@ if [ ! -f "${PX4_DIR}/CMakeLists.txt" ]; then
   exit 1
 fi
 
-echo "Removing px4-nvim-debug from: ${PX4_DIR}"
+echo "Removing px4-nvim-debug symlinks from: ${PX4_DIR}"
 
-for f in \
-  .clangd run_docker_debug.sh DEBUG.md \
-  Tools/build/make_sitl.sh \
-  Tools/debug/sitl_gdbserver.sh \
+FILES=(
+  Dockerfile
+  run_docker.sh
+  run_docker_debug.sh
+  start.sh
+  .clangd
+  DEBUG.md
+  Tools/build/make_sitl.sh
+  Tools/debug/sitl_gdbserver.sh
   Tools/debug/dap-px4.lua
-do
+)
+
+for f in "${FILES[@]}"; do
   target="${PX4_DIR}/${f}"
   if [ -L "${target}" ]; then
     rm "${target}"
@@ -29,20 +36,7 @@ do
   fi
 done
 
-# Revert Dockerfile patch
-DOCKERFILE="${PX4_DIR}/Dockerfile"
-if grep -q "gdbserver" "${DOCKERFILE}" 2>/dev/null; then
-  python3 - "${DOCKERFILE}" <<'EOF'
-import sys
-path = sys.argv[1]
-text = open(path).read()
-text = text.replace("    gdbserver \\\n", "")
-open(path, "w").write(text)
-print("  reverted Dockerfile")
-EOF
-fi
-
-# Remove Neovim plugin symlink if it points into this repo
+# Remove Neovim plugin symlink
 NVIM_LINK="${HOME}/.config/nvim/lua/plugins/dap-px4.lua"
 if [ -L "${NVIM_LINK}" ]; then
   rm "${NVIM_LINK}"

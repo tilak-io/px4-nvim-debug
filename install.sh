@@ -9,7 +9,7 @@
 set -euo pipefail
 
 PX4_DIR="${1:-$PWD}"
-TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOLS_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 # ── Validate target ────────────────────────────────────────────────────────────
 if [ ! -f "${PX4_DIR}/CMakeLists.txt" ] || [ ! -d "${PX4_DIR}/src/modules" ]; then
@@ -19,38 +19,33 @@ fi
 
 echo "Installing px4-nvim-debug into: ${PX4_DIR}"
 
-# ── Symlink root-level files ───────────────────────────────────────────────────
-for f in .clangd run_docker_debug.sh DEBUG.md; do
-  ln -sf "${TOOLS_DIR}/${f}" "${PX4_DIR}/${f}"
-  echo "  linked ${f}"
-done
-
-# ── Symlink Tools/ files ───────────────────────────────────────────────────────
-mkdir -p "${PX4_DIR}/Tools/build" "${PX4_DIR}/Tools/debug"
-
-for f in Tools/build/make_sitl.sh Tools/debug/sitl_gdbserver.sh Tools/debug/dap-px4.lua; do
-  ln -sf "${TOOLS_DIR}/${f}" "${PX4_DIR}/${f}"
-  chmod +x "${TOOLS_DIR}/${f}"
-  echo "  linked ${f}"
-done
-
-# ── Patch Dockerfile ───────────────────────────────────────────────────────────
-DOCKERFILE="${PX4_DIR}/Dockerfile"
-if grep -q "gdbserver" "${DOCKERFILE}" 2>/dev/null; then
-  echo "  Dockerfile already contains gdbserver — skipped"
-else
-  python3 - "${DOCKERFILE}" <<'EOF'
-import sys
-path = sys.argv[1]
-text = open(path).read()
-text = text.replace(
-    "    xvfb \\\n    && rm -rf",
-    "    xvfb \\\n    gdbserver \\\n    && rm -rf",
+# ── Symlink all files ──────────────────────────────────────────────────────────
+FILES=(
+  Dockerfile
+  run_docker.sh
+  run_docker_debug.sh
+  start.sh
+  .clangd
+  DEBUG.md
+  Tools/build/make_sitl.sh
+  Tools/debug/sitl_gdbserver.sh
+  Tools/debug/dap-px4.lua
 )
-open(path, "w").write(text)
-print(f"  patched Dockerfile (+gdbserver)")
-EOF
-fi
+
+for f in "${FILES[@]}"; do
+  dir="$(dirname "${PX4_DIR}/${f}")"
+  mkdir -p "${dir}"
+  ln -sf "${TOOLS_DIR}/${f}" "${PX4_DIR}/${f}"
+  echo "  linked ${f}"
+done
+
+# Make scripts executable through the symlink
+chmod +x \
+  "${TOOLS_DIR}/run_docker.sh" \
+  "${TOOLS_DIR}/run_docker_debug.sh" \
+  "${TOOLS_DIR}/start.sh" \
+  "${TOOLS_DIR}/Tools/build/make_sitl.sh" \
+  "${TOOLS_DIR}/Tools/debug/sitl_gdbserver.sh"
 
 # ── Neovim plugin ──────────────────────────────────────────────────────────────
 NVIM_PLUGINS="${HOME}/.config/nvim/lua/plugins"
@@ -58,12 +53,12 @@ if [ -d "${NVIM_PLUGINS}" ]; then
   ln -sf "${TOOLS_DIR}/Tools/debug/dap-px4.lua" "${NVIM_PLUGINS}/dap-px4.lua"
   echo "  linked dap-px4.lua → ${NVIM_PLUGINS}/dap-px4.lua"
 else
-  echo "  Neovim plugins dir not found (${NVIM_PLUGINS}) — copy manually:"
-  echo "    cp Tools/debug/dap-px4.lua ~/.config/nvim/lua/plugins/"
+  echo "  Neovim plugins dir not found — copy manually:"
+  echo "    cp '${TOOLS_DIR}/Tools/debug/dap-px4.lua' ~/.config/nvim/lua/plugins/"
 fi
 
 echo ""
 echo "Done. Next steps:"
-echo "  1. Rebuild the Docker image:  docker build -t px4-sim-gz ${PX4_DIR}"
-echo "  2. Build PX4:                 <leader>B  (or ./Tools/build/make_sitl.sh)"
-echo "  3. Install Neovim tools:      :MasonInstall clangd cpptools"
+echo "  1. Build the Docker image:  cd '${PX4_DIR}' && ./run_docker.sh"
+echo "  2. Build PX4:               <leader>B  (or ./Tools/build/make_sitl.sh)"
+echo "  3. Neovim tools (once):     :MasonInstall clangd cpptools"
