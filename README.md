@@ -28,7 +28,7 @@ Neovim plugin for building and debugging [PX4-Autopilot](https://github.com/PX4/
 -- ~/.config/nvim/lua/plugins/px4.lua
 return {
   {
-    "yourname/px4-nvim-debug",   -- or: dir = "~/path/to/px4-nvim-debug"
+    "tilaktilak/px4-nvim-debug",
     dependencies = { "mfussenegger/nvim-dap" },
     import = "px4-nvim-debug.lazy",
   },
