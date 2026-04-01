@@ -57,8 +57,19 @@ return {
       end, { desc = "PX4: build px4_sitl_default", silent = true })
 
       vim.api.nvim_create_user_command("PX4Install", function(opts)
-        require("px4-nvim-debug").install(opts.args)
-      end, { nargs = 1, complete = "dir", desc = "Install px4-nvim-debug into a PX4-Autopilot clone" })
+        local px4 = require("px4-nvim-debug")
+        local target = opts.args ~= "" and opts.args or nil
+        if not target then
+          -- Auto-detect from the current buffer
+          local root, err = px4.px4_root()
+          if not root then
+            vim.notify("No path given and " .. err, vim.log.levels.ERROR, { title = "PX4" })
+            return
+          end
+          target = root
+        end
+        px4.install(target)
+      end, { nargs = "?", complete = "dir", desc = "Install px4-nvim-debug into a PX4-Autopilot clone" })
     end,
   },
 }
