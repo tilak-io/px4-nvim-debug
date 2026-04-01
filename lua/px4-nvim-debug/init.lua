@@ -52,6 +52,7 @@ function M.dap_configs()
       args     = px4_path(function(r) return { r .. "/ROMFS/px4fmu_common" } end),
       cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
       stopAtEntry = false,
+      externalConsole = false,
       environment = { { name = "PX4_SIM_MODEL", value = "gz_x500" } },
       MIMode = "gdb",
       setupCommands = M.gdb_setup,
@@ -64,6 +65,7 @@ function M.dap_configs()
       args     = px4_path(function(r) return { r .. "/ROMFS/px4fmu_common" } end),
       cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
       stopAtEntry = false,
+      externalConsole = false,
       environment = function()
         local model = vim.fn.input("GZ model [x500]: ")
         if model == "" then model = "x500" end
@@ -80,6 +82,7 @@ function M.dap_configs()
       args     = px4_path(function(r) return { r .. "/ROMFS/px4fmu_common" } end),
       cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
       stopAtEntry = false,
+      externalConsole = false,
       environment = { { name = "PX4_SYS_AUTOSTART", value = "10040" } },
       MIMode = "gdb",
       setupCommands = M.gdb_setup,
@@ -95,6 +98,7 @@ function M.dap_configs()
       args     = {},
       cwd      = px4_path(function(r) return build_dir(r) .. "/rootfs" end),
       stopAtEntry = false,
+      externalConsole = false,
       setupCommands = M.gdb_setup,
     },
   }
